@@ -34,6 +34,7 @@
 #include "autoingest/.idl/gstProvider.h"
 #include "autoingest/.idl/storage/RasterProductConfig.h"
 #include "fusion/autoingest/khFusionURI.h"
+#include "fusion/fusionui/AssetBase.h"
 #include "fusion/fusionui/QDateWrapper.h"
 #include "fusion/fusionui/Preferences.h"
 #include "common/khStringUtils.h"
@@ -163,6 +164,7 @@ QFileDialog* RasterAssetWidget::FileDialog() {
     file_dialog_ = new QFileDialog(this);
     file_dialog_->setMode(QFileDialog::ExistingFiles);
     file_dialog_->setCaption(tr("Open Source"));
+    bool add_dem_file_filter = false;
 
     if (AssetType() == AssetDefs::Imagery) {
       if (khDirExists(Preferences::DefaultImageryPath().latin1())) {
@@ -184,8 +186,10 @@ QFileDialog* RasterAssetWidget::FileDialog() {
                    "Please update your preferences."),
                 tr("OK"), 0, 0, 0);
       }
-      file_dialog_->addFilter("USGS ASCII DEM ( *.dem *.DEM )");
+      add_dem_file_filter = true;
     }
+    // For JPEG2000 and MrSID, check if GDAL is built
+    // with specific format support.
     bool is_jpeg_found = false;
     bool is_mrsid_found = false;
     for (int iDr = 0; iDr < GDALGetDriverCount(); iDr++) {
@@ -216,17 +220,29 @@ QFileDialog* RasterAssetWidget::FileDialog() {
         }
       }
     }
-    // For JPEG2000 and MrSID, check if GDAL is built
-    // with specific format support.
+    // Add file filters:
+    QString supported_files_filter = "Supported images (";
+    if (add_dem_file_filter)
+      supported_files_filter += " *.dem *.DEM";
+    if (is_jpeg_found)
+      supported_files_filter += " *.jp2 *.JP2";
+    if (is_mrsid_found)
+      supported_files_filter += " *.sid *.SID";
+    supported_files_filter += " *.img *.IMG *.tif *.TIF *.tiff *.TIFF )";
+    file_dialog_->addFilter(supported_files_filter);
+
+    if (add_dem_file_filter)
+      file_dialog_->addFilter("USGS ASCII DEM ( *.dem *.DEM )");
     if (is_jpeg_found)
       file_dialog_->addFilter("JPEG2000 ( *.jp2 *.JP2 )");
     if (is_mrsid_found)
       file_dialog_->addFilter("MrSID ( *.sid *.SID )");
     file_dialog_->addFilter("Erdas Imagine ( *.img *.IMG )");
-    file_dialog_->addFilter("Tiff/GeoTiff ( *.tif *.TIF )");
+    file_dialog_->addFilter("TIFF/GeoTIFF ( *.tif *.TIF *.tiff *.TIFF )");
 
-    // make the first filter current, which is the default "All Files (*)"
-    file_dialog_->setSelectedFilter(0);
+    // Make the second filter current, which is the "Supported images" one.
+    // The first one is the default "All Files (*)".
+    file_dialog_->setSelectedFilter(1);
   }
   return file_dialog_;
 }
@@ -240,6 +256,7 @@ void RasterAssetWidget::AddSource() {
   if (FileDialog()->exec() != QDialog::Accepted)
     return;
 
+  bool modified = false;
   QStringList files = FileDialog()->selectedFiles();
   for (QStringList::Iterator it = files.begin(); it != files.end(); ++it) {
     if (source_list->findItem(*it, Qt::ExactMatch)) {
@@ -251,7 +268,12 @@ void RasterAssetWidget::AddSource() {
       continue;
     } else {
       source_list->insertItem(*it);
+      modified = true;
     }
+  }
+
+  if (modified) {
+	this->GetAssetBase()->SetSaveError(false);
   }
 
   // adding a source may enable mosaic config
@@ -268,6 +290,7 @@ void RasterAssetWidget::DeleteSource() {
     return;
 
   source_list->removeItem(row);
+  this->GetAssetBase()->SetSaveError(false);
 
   // deleting a source may disable mosaic config
   AdjustMosaicEnabled();
@@ -629,6 +652,10 @@ void RasterAssetWidget::AssembleEditRequest(
   request->meta.SetValue("sourcedate", acquisition_date_wrapper_->GetDate());
 
   request->sources.clear();
+  if (source_list->numRows() == 0){
+    throw khException(tr("No source files specified \n") +
+                      khErrnoException::errorString(errno));
+  }
   for (int row = 0; row < source_list->numRows(); ++row) {
     std::string filename = source_list->text(row).latin1();
     SourceConfig::AddResult result = request->sources.AddFile(filename);
@@ -640,7 +667,9 @@ void RasterAssetWidget::AssembleEditRequest(
                           + filename + "\n" +
                           khErrnoException::errorString(errno));
       case SourceConfig::NonVolume:
-        throw khException(filename + tr(" doesn't reside on a known volume."));
+        throw khException(filename + tr(" doesn't reside on a known volume.\n") +
+                         " You can move your asset files to a known volume, or create a new volume\n" +
+			 " that contains their current location using geconfigureassetroot command.");
     }
   }
 

@@ -97,13 +97,14 @@ bool AssetDerived<Defs, FinalClass>::IsModified() {
 }
 
 template <class Defs, class FinalClass>
-bool AssetDerived<Defs, FinalClass>::SubmitEditRequest(QString* error_msg) {
+  bool AssetDerived<Defs, FinalClass>::SubmitEditRequest(QString* error_msg, bool last_save_error) {
   typename Defs::Request request = AssembleEditRequest();
-  if (request == saved_edit_request_)
+  if (!last_save_error && request == saved_edit_request_ )
     return true;
 
-  if (request.assetname != saved_edit_request_.assetname) {
-    // It is a "SaveAs"'s edit request, so resetting IDs in fuse config to force
+  if (last_save_error || request.assetname != saved_edit_request_.assetname) {
+    // It is a "SaveAs"'s edit request, or earlier request was not
+    // successfully saved, so resetting IDs in fuse config to force
     // generating of new ones.
     ResetConfigIds(&request);
     // Update model-object: sync with locally modified request.
@@ -111,6 +112,7 @@ bool AssetDerived<Defs, FinalClass>::SubmitEditRequest(QString* error_msg) {
     // Re-assemble request after updating model-object.
     request = AssembleEditRequest();
   }
+
 
   if (Defs::kSubmitFunc(request, *error_msg, 0 /* timeout */)) {
     // TODO: To be consistent, the model (gstVectorProject-object)
@@ -126,15 +128,18 @@ bool AssetDerived<Defs, FinalClass>::SubmitEditRequest(QString* error_msg) {
 }
 
 template <class Defs, class FinalClass>
-void AssetDerived<Defs, FinalClass>::Init(void) {
+void AssetDerived<Defs, FinalClass>::Init(bool re_init) {
   // defer to final class
   final()->FinalPreInit();
 
-  InstallMainWidget();
-  SetName(saved_edit_request_.assetname);
-  SetMeta(saved_edit_request_.meta);
+  if (re_init == false) {
+    InstallMainWidget();
 
-  main_widget_->Prefill(saved_edit_request_);
+    SetName(saved_edit_request_.assetname);
+    SetMeta(saved_edit_request_.meta);
+
+    main_widget_->Prefill(saved_edit_request_);
+  }
 
   // defer to final class
   final()->FinalExtraInit();
@@ -170,7 +175,7 @@ template <class Defs, class FinalClass>
 void AssetDerived<Defs, FinalClass>::ReInit(
     const typename Defs::Request &request) {
   saved_edit_request_ = request;
-  Init();
+  Init(true);
 }
 
 #endif // FUSION_FUSIONUI_ASSETDERIVEDIMPL_H__

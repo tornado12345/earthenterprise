@@ -81,6 +81,9 @@ class PublishDef(object):
     self.serve_wms = False
     # Whether to force copy publish-manifest files.
     self.force_copy = False
+    # Whether to make this databased the default for Earth Clients when
+    # none is specified in stream endpoint requests. 
+    self.ec_default_db = False
 
 
 # TODO: rename to PublishHandler.
@@ -468,7 +471,7 @@ class PublishManager(object):
     # Get snippets set name parameter.
     publish_def.snippets_set_name = request.GetParameter(
         constants.SNIPPET_SET_NAME)
-    logger.debug("Snippets set name: %s ", publish_def.snippet_set_name if
+    logger.debug("Snippets set name: %s ", publish_def.snippets_set_name if
                  publish_def.snippets_set_name else "not specified.")
 
     # Get search definition name parameter.
@@ -503,6 +506,9 @@ class PublishManager(object):
     publish_def.serve_wms = request.GetBoolParameter(constants.SERVE_WMS)
 
     publish_def.force_copy = request.IsForceCopy()
+
+    publish_def.ec_default_db = request.GetBoolParameter(constants.EC_DEFAULT_DB)
+    
     return publish_def
 
   def __GetPublishManifest(self, publish_def):

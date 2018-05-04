@@ -18,7 +18,7 @@
 
 Import('third_party_env')
 
-postgresql_version = 'postgresql-8.4.22'
+postgresql_version = 'postgresql-9.6.5'
 postgresql_source = File('#/../../earth_enterprise/third_party/postgresql/%s.tar.bz2'
                          % postgresql_version).abspath
 
@@ -59,15 +59,25 @@ postgresql_target = '%s/.configure' % current_dir
 postgresql_configure = postgresql_env.Command(
     postgresql_target, postgresql_extract,
     [postgresql_env.MultiCommand(
-        'cd %s\n'
-        '%s ./configure --prefix=/opt/google --mandir=/opt/google/share/man '
-        '--disable-rpath --enable-thread-safety --with-openssl --with-python '
-        '--without-perl --without-readline --without-pam --without-krb5 %s\n'
-        'touch %s' % (build_root, env_opt, config_opt, postgresql_target))])
+        ('cd {build_root_escaped}\n'
+         'export LD_LIBRARY_PATH={build_lib_dir_escaped}\n'
+         '{env_opt} ./configure --prefix=/opt/google --mandir=/opt/google/share/man '
+            '--disable-rpath --enable-thread-safety --with-openssl --with-python '
+            '--without-perl --without-readline --without-pam --without-krb5 {config_opt}\n'
+         'touch {postgresql_target_escaped}'
+        ).format(
+            build_root_escaped = postgresql_env.bash_escape(build_root),
+            build_lib_dir_escaped =
+                postgresql_env.bash_escape(postgresql_env.exportdirs['lib']),
+            env_opt = env_opt,
+            config_opt = config_opt,
+            postgresql_target_escaped =
+                postgresql_env.bash_escape(postgresql_target)
+        ))])
 
 # [3] Build
 make_options = '-j%d' % num_cpu
-if third_party_env['is_hardy'] and not third_party_env['native_cc']:
+if third_party_env['is_min_ubuntu'] and not third_party_env['native_cc']:
   make_options = '%s python_additional_libs=""' % make_options
 postgresql_target = '%s/.build' % current_dir
 postgresql_build = postgresql_env.Command(

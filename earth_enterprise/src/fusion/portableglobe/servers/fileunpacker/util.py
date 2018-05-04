@@ -1,4 +1,4 @@
-#!/usr/bin/python2.6
+#!/usr/bin/python
 #
 # Copyright 2017 Google Inc.
 #
@@ -17,9 +17,15 @@
 
 """Utility methods."""
 
-import os
 import pexpect
-import pexpect.fdpexpect
+
+# Try loading fdpexpect for version 3.* and above.
+# if not successful, fallback to fdpexpect from older pexpect package.
+try:
+  import pexpect.fdpexpect as fdpexpect
+except ImportError:
+  import fdpexpect
+
 import subprocess
 import sys
 
@@ -28,32 +34,31 @@ class OsCommandError(Exception):
   """Thrown if os command fails."""
   pass
 
+def PipePexpectStreamNonBlocking(source_stream, destination_stream):
+  while source_stream.isalive():
+    try:
+      chunk = source_stream.read_nonblocking(timeout=0)
+      destination_stream.write(chunk)
+    except (pexpect.TIMEOUT, pexpect.EOF):
+      return
 
 def ExecuteCmd(os_cmd, use_shell=False):
   """Execute os command and log results."""
-  print "Executing: {}".format(os_cmd if use_shell else ' '.join(os_cmd))
+  print "Executing: {0}".format(os_cmd if use_shell else ' '.join(os_cmd))
   process = None
   try:
     process = subprocess.Popen(os_cmd, stdin=None, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, bufsize=0, shell=use_shell)
-    stdout_stream = pexpect.fdpexpect.fdspawn(process.stdout)
-    stderr_stream = pexpect.fdpexpect.fdspawn(process.stderr)
+    stdout_stream = fdpexpect.fdspawn(process.stdout)
+    stderr_stream = fdpexpect.fdspawn(process.stderr)
     # process.returncode is None until the subprocess completes. Then, it gets
     # filled in with the subprocess exit code.
     while process.returncode is None:
-      if stdout_stream.isalive():
-        try:
-          stdout_chunk = stdout_stream.read_nonblocking(timeout=0)
-          sys.stdout.write(stdout_chunk)
-        except (pexpect.TIMEOUT, pexpect.EOF):
-          pass
-      if stderr_stream.isalive():
-        try:
-          stderr_chunk = stderr_stream.read_nonblocking(timeout=0)
-          sys.stderr.write(stderr_chunk)
-        except (pexpect.TIMEOUT, pexpect.EOF):
-          pass
+      PipePexpectStreamNonBlocking(stdout_stream, sys.stdout)
+      PipePexpectStreamNonBlocking(stderr_stream, sys.stderr)
       process.poll()
+    PipePexpectStreamNonBlocking(stdout_stream, sys.stdout)
+    PipePexpectStreamNonBlocking(stderr_stream, sys.stderr)
     if process.returncode: # Assume a non-zero exit code means error:
       return "Unable to execute %s" % os_cmd
     return process.returncode

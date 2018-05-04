@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 #
 # Copyright 2017 Google Inc.
 #
@@ -22,8 +22,8 @@ import posixpath
 import re
 import urllib
 
-from common import errors
-from common import utils
+import errors
+import utils
 
 # It is used for debugging.
 # logging.getLogger().setLevel(level=logging.DEBUG)
@@ -214,7 +214,7 @@ class FormWrap(object):
     if path:
       path = self._sanitize_path(path)
 
-    return "{}{}".format(server, path)
+    return "{0}{1}".format(server, path)
 
   def getvalue_url(self, key, default_val=None):
     """Gets an URL value (absolute or relative).

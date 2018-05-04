@@ -1,4 +1,4 @@
-#!/opt/google/gepython/Python-2.7.5/bin/python
+#!/usr/bin/env python
 #
 # Copyright 2017 Google Inc.
 #
@@ -28,7 +28,7 @@ import xml.sax.saxutils as saxutils
 import distutils.dir_util
 import distutils.errors
 
-from common import errors
+import errors
 
 BYTES_PER_MEGABYTE = 1024.0 * 1024.0
 NAME_TEMPLATE = "%s_%s"
@@ -328,9 +328,21 @@ def RunCmd(os_cmd):
   try:
     if isinstance(os_cmd, str):
       os_cmd = shlex.split(os_cmd)
-    results = subprocess.check_output(os_cmd)
-    return results.split("\n")
-  except subprocess.CalledProcessError as e:
+    p = subprocess.Popen(os_cmd, shell=False,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+    # capture stdout/stderr into memory variables
+    # NOTE: communicate() can only be called one time
+    # per call of Popen as after the first call
+    # stdout/stderr pipe handles are closed
+    results, err_data = p.communicate()
+    return_code = p.returncode
+    if return_code != 0:
+      results = "{0} (return code {1})".format(err_data, return_code)
+      return ["", results]
+    else:
+      return results.split("\n")
+  except Exception, e:
     # print "FAILURE: %s" % e.__str__()
     return ["", e.__str__()]
 
@@ -381,7 +393,7 @@ def NormalizeTargetPath(target):
     return target
 
   if target[0] != "/":
-    target = "/{}".format(target)
+    target = "/{0}".format(target)
 
   return target
 
@@ -401,10 +413,10 @@ def GetServerAndPathFromUrl(url):
   path = ""
   url_obj = urlparse.urlparse(url)
   if url_obj.scheme and url_obj.netloc and url_obj.path:
-    server = "{}://{}".format(url_obj.scheme, url_obj.netloc)
+    server = "{0}://{1}".format(url_obj.scheme, url_obj.netloc)
     path = url_obj.path
   elif url_obj.scheme and url_obj.netloc:
-    server = "{}://{}".format(url_obj.scheme, url_obj.netloc)
+    server = "{0}://{1}".format(url_obj.scheme, url_obj.netloc)
   elif url_obj.path:
     path = url_obj.path
   else:

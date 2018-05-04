@@ -101,6 +101,8 @@ AssetBase::AssetBase(QWidget* parent)
   connect(file_menu_, SIGNAL(aboutToShow()), this, SLOT(AboutToShowFileMenu()));
   connect(file_menu_, SIGNAL(aboutToHide()), this, SLOT(AboutToHideFileMenu()));
   connect(hidden_action_, SIGNAL(toggled(bool)), this, SLOT(SetHidden(bool)));
+  save_error_ = false;
+  last_save_error_ = false;
 }
 
 AssetBase::~AssetBase() {
@@ -153,17 +155,19 @@ void AssetBase::languageChange() {
 
 bool AssetBase::Save() {
   try {
-    if (!EnsureNameValid())
+    if (!EnsureNameValid()) {
       return false;
+    }
 
     QString error_msg;
-    if (!SubmitEditRequest(&error_msg)) {
+    if (!SubmitEditRequest(&error_msg, last_save_error_)) {
       QMessageBox::critical(this, tr("Save ") + AssetPrettyName(),
                             tr("Unable to save: ") + Name() + "\n" +
                             error_msg,
                             tr("OK"), 0, 0, 0);
-      return false;
     } else {
+      SetSaveError(false);
+      SetLastSaveError(false);
       return true;
     }
   } catch (const khException &e) {
@@ -183,6 +187,8 @@ bool AssetBase::Save() {
                           Name() + "\nUnknown error",
                           tr("OK"), 0, 0, 0);
   }
+  SetSaveError(true);
+  SetLastSaveError(true);
   return false;
 }
 
@@ -294,7 +300,7 @@ bool AssetBase::EnsureNameValid() {
 
 void AssetBase::Build(void) {
   bool dirty = IsModified();
-  if (dirty) {
+  if (dirty || save_error_) {
     QMessageBox::critical(this, tr("Build ") + AssetPrettyName(),
                           tr("This ") + AssetPrettyName() +
                           tr(" has unsaved changes.\n\n") +
@@ -323,7 +329,8 @@ void AssetBase::Build(void) {
 
 void AssetBase::AboutToShowFileMenu() {
   bool dirty = IsModified();
-  save_action_->setEnabled(dirty);
+  save_action_->setEnabled(dirty && !save_error_);
+  saveas_action_->setEnabled(!save_error_);
   build_action_->setEnabled(!dirty);
 }
 
@@ -332,7 +339,8 @@ void AssetBase::AboutToHideFileMenu() {
   // make sure it's always enabled when the menu is dismissed. Otherwise
   // they might not be able to use the save accelerator key to save a dirty
   // asset.
-  save_action_->setEnabled(true);
+  save_action_->setEnabled(!save_error_);
+  saveas_action_->setEnabled(!save_error_);
   build_action_->setEnabled(true);
 }
 
@@ -347,4 +355,14 @@ void AssetBase::SetErrorMsg(const QString& text, bool red) {
     }
     error_msg_label_->show();
   }
+}
+
+void AssetBase::SetSaveError(bool state) {
+  save_error_ = state;
+  save_action_->setEnabled(!save_error_);
+  saveas_action_->setEnabled(!save_error_);
+}
+
+void AssetBase::SetLastSaveError(bool state) {
+  last_save_error_ = state;
 }

@@ -1,4 +1,4 @@
-#!/opt/google/gepython/Python-2.7.5/bin/python
+#!/usr/bin/env python
 #
 # Copyright 2017 Google Inc.
 #
@@ -16,7 +16,12 @@
 
 
 import os
-import unittest
+# Need to use unittest2 for Python 2.6.
+try:
+  import unittest2 as unittest
+except ImportError:
+  import unittest
+
 
 """A sample unit test for geecheck.
 

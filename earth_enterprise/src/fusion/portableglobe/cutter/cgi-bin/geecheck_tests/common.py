@@ -1,4 +1,4 @@
-#!/opt/google/gepython/Python-2.7.5/bin/python
+#!/usr/bin/env python
 #
 # Copyright 2017 Google Inc.
 #
@@ -20,15 +20,15 @@ import os
 import platform
 import socket
 
-LATEST_VERSION = '5.1.3'
+LATEST_VERSION = '5.2.2'
 
 SUPPORTED_OS_LIST = {
     'redhat': {'min_release': '6.0',
-               'max_release': '6.5'},
+               'max_release': '7.4'},
     'Ubuntu': {'min_release': '10.04',
-               'max_release': '14.04'},
-    'CentOS Linux': {'min_release': '6.5',
-                     'max_release': '6.5'}
+               'max_release': '16.04'},
+    'CentOS': {'min_release': '6.0',
+               'max_release': '7.4'}
 }
 
 BAD_HOSTNAMES = ['', 'linux', 'localhost', 'dhcp', 'bootp']
@@ -49,7 +49,7 @@ def GetHostInfo():
   ipaddr = GetIP(hostname)
   host_check, _, _ = socket.gethostbyaddr(ipaddr)
   if hostname in BAD_HOSTNAMES:
-    AssertionError('Hostname cannot be one of %s' % ','.join(BAD_HOSTNAMES))
+    raise AssertionError('Hostname cannot be one of %s' % ','.join(BAD_HOSTNAMES))
   return hostname, ipaddr, host_check
 
 
@@ -73,7 +73,8 @@ def GetFusionVersion():
       version = f.readline().rstrip()
       return version
   except IOError:
-    AssertionError('Fusion version not available.')
+    raise AssertionError('Fusion version not available.')
+  return version
 
 
 def GetGeeServerVersion():
@@ -85,7 +86,7 @@ def GetGeeServerVersion():
       version = f.readline().rstrip()
       return version
   except IOError:
-    AssertionError('GEE Server version not available.')
+    raise AssertionError('GEE Server version not available.')
   return version
 
 
@@ -108,15 +109,38 @@ def GetIP(hostname):
 
 def GetLinuxDetails():
   """Get Linux distribution details."""
+
+  # eg. ('Ubuntu', '14.04', 'trusty')
+  # platform.linux_distribution() and platform.dist() were deprecated, they
+  # return 'debian' as the os, didn't find an elegant alternative and the
+  # functions use the files in /etc/ to do their magic.
+  #
+  # This has become further complicated by changes in how CentOS 7 uses the
+  # /etc files.
+
+  # This block works well for RHEL and CentOS.
   try:
-    # eg. ('Ubuntu', '14.04', 'trusty')
-    # platform.linux_distribution() and platform.dist() were deprecated, they
-    # return 'debian' as the os, didn't find an elegant alternative and the
-    # functions use the files in /etc/ to do their magic.
-    with open("/etc/issue") as f:
-      return f.read().split()
+    with open("/etc/redhat-release") as f:
+      line = f.read()
+    os = line.split()[0]
+    if os == "Red":
+      os = "redhat"
+    version = line.split(" release ")[1].split()[0]
+    return [os, version]
+
+  # Now try for Ubuntu.
   except IOError:
-    raise AssertionError('Linux distribution details not available.')
+    try:
+      with open("/etc/lsb-release") as f:
+        line = f.read()
+      # Parse lines like "DISTRIB_ID=Ubuntu\n".
+      os = line.split()[0].split("=")[1]
+      version = line.split()[1].split("=")[1]
+      return [os, version]
+
+    # Final fail case.
+    except IOError:
+      raise AssertionError('Linux distribution details not available.')
 
 
 def GetLinuxArchitecture():
