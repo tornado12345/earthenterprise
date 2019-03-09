@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2017 Google Inc.
+# Copyright 2018-2019 Open GEE Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +32,8 @@ DEFAULTGEFUSIONUSER_NAME="gefusionuser"
 DEFAULTGROUPNAME="gegroup"
 GEFUSIONUSER_NAME=$DEFAULTGEFUSIONUSER_NAME
 GROUPNAME=$DEFAULTGROUPNAME
+GEPGUSER_NAME="gepguser"
+GEAPACHEUSER_NAME="geapacheuser"
 
 # script arguments
 BACKUPFUSION=true
@@ -70,6 +73,7 @@ main_preinstall()
 		IS_NEWINSTALL=false
 	else
 		IS_NEWINSTALL=true
+		BACKUPFUSION=false
 	fi
 
 	# Argument check
@@ -81,10 +85,15 @@ main_preinstall()
             exit 1
         fi
 
+	if is_package_installed "opengee-common" "opengee-common" ; then
+        show_opengee_package_installed "install" "$GEEF"
+        exit 1
+	fi
+
 	if ! check_prereq_software; then
 		exit 1
 	fi
-	
+
 	# check to see if GE Fusion processes are running
 	if ! check_fusion_processes_running; then
 		show_fusion_running_message
@@ -158,7 +167,7 @@ main_install()
 
 main_postinstall()
 {
-	create_system_main_directories
+    create_system_main_directories
 
     if ! compare_asset_root_publishvolume; then
         exit 1
@@ -211,7 +220,7 @@ show_help()
 	echo -e "-dir \t\tTemp Install Directory - specify the temporary install directory. Default is [$TMPINSTALLDIR]."	
 	echo -e "-u \t\tFusion User Name - the user name to use for Fusion. Default is [$GEFUSIONUSER_NAME]. \n\t\tNote: this is only used for new installations."
 	echo -e "-g \t\tUser Group Name - the group name to use for the Fusion user. Default is [$GROUPNAME]. \n\t\tNote: this is only used for new installations."
-	echo -e "-ar \t\tAsset Root Mame - the name of the asset root volume.  Default is [$ASSET_ROOT]. \n\t\tNote: this is only used for new installations. Specify absolute paths only."
+	echo -e "-ar \t\tAsset Root Name - the name of the asset root volume.  Default is [$ASSET_ROOT]. \n\t\tNote: this is only used for new installations. Specify absolute paths only."
     echo -e "-sv \t\tSource Volume Name - the name of the source volume.  Default is [$SOURCE_VOLUME]. \n\t\tNote: this is only used for new installations. Specify absolute paths only."
 	echo -e "-nobk \t\tNo Backup - do not backup the current fusion setup. Default is to backup \n\t\tthe setup before installing."
     echo -e "-nostart \tDo Not Start Fusion - after install, do not start the Fusion daemon.  Default is to start the daemon."
@@ -410,6 +419,9 @@ parse_arguments()
 				if [ $IS_NEWINSTALL == false ]; then
 					echo -e "\nYou cannot modify the fusion user name using the installer because Fusion is already installed on this server."
 					parse_arguments_retval=1
+					# Don't show the User Group dialog since it is invalid to change the fusion
+					# username once fusion is installed on the server
+					show_user_group_recommendation=false
 					break
 				else
 					shift
@@ -430,6 +442,9 @@ parse_arguments()
 				if [ $IS_NEWINSTALL == false ]; then
 					echo -e "\nYou cannot modify the fusion user group using the installer because Fusion is already installed on this server."
 					parse_arguments_retval=1
+					# Don't show the User Group dialog since it is invalid to change the fusion
+					# username once fusion is installed on the server
+					show_user_group_recommendation=false
 					break
 				else
 					shift
@@ -477,9 +492,9 @@ parse_arguments()
 	    echo -e "Selected Fusion User Group: \t\t\t$GROUPNAME"
     
         # START WORK HERE
-        if ! prompt_to_quit "X (Exit) the installer and change the asset root location - C (Continue) to use the asset root that you have specified."; then
+        if ! prompt_to_quit "X (Exit) the installer and use the default username - C (Continue) to use the username that you have specified."; then
             parse_arguments_retval=1
-        fi  
+        fi
     fi
 	
 	return $parse_arguments_retval;
@@ -499,7 +514,9 @@ prompt_install_confirmation()
 	echo -e "# CPU's: \t\t$NUM_CPUS"
 	echo -e "Operating System: \t$MACHINE_OS_FRIENDLY"
 	echo -e "64 bit OS: \t\tYES"	# Will always be true because we exit if 32 bit OS
-	echo -e "Backup Fusion: \t\t$backupStringValue"
+	if [ $IS_NEWINSTALL == false ]; then
+		echo -e "Backup Fusion: \t\t$backupStringValue"
+	fi
 	echo -e "Install Location: \t$BASEINSTALLDIR_OPT"
 	echo -e "Asset Root: \t\t$ASSET_ROOT"
     echo -e "Source Volume: \t\t$SOURCE_VOLUME"
@@ -669,6 +686,9 @@ setup_fusion_daemon()
 	# setup fusion daemon
 	printf "Setting up the Fusion daemon...\n"
 
+    # Create a new file ‘/etc/init.d/gevars.sh’ and add the below lines.
+    echo -e "GEAPACHEUSER=$GEAPACHEUSER_NAME\nGEPGUSER=$GEPGUSER_NAME\nGEFUSIONUSER=$GEFUSIONUSER_NAME\nGEGROUP=$GROUPNAME" > $BININSTALLROOTDIR/gevars.sh
+
 	test -f $CHKCONFIG && $CHKCONFIG --add gefusion
 	test -f $INITSCRIPTUPDATE && $INITSCRIPTUPDATE -f gefusion remove
 	test -f $INITSCRIPTUPDATE && $INITSCRIPTUPDATE gefusion start 90 2 3 4 5 . stop 10 0 1 6 .
@@ -731,7 +751,7 @@ check_asset_root_volume_size()
         echo -e "We recommend that an asset root directory have a minimum of $MIN_ASSET_ROOT_VOLUME_SIZE_IN_GB GB of free disk space."
         echo ""
 
-        if ! prompt_to_quit "X (Exit) the installer and change the asset root location - C (Continue) to use the asset root that you have specified."; then
+        if ! prompt_to_quit "X (Exit) the installer and change the asset root location with larger volume - C (Continue) to use the asset root that you have specified."; then
             check_asset_root_volume_size_retval=1
         fi
     fi
@@ -742,9 +762,8 @@ check_asset_root_volume_size()
 check_fusion_master_or_slave()
 {
     if [ -f "$ASSET_ROOT/.config/volumes.xml" ]; then
-        #EXISTING_HOST=$(xmllint --xpath "//VolumeDefList/volumedefs/item[1]/host/text()" $ASSET_ROOT/.config/volumes.xml | $NEWLINECLEANER)
 	EXISTING_HOST=$(xml_file_get_xpath "$ASSET_ROOT/.config/volumes.xml" "//VolumeDefList/volumedefs/item[1]/host/text()")
-	EXISTING_HOST=`echo "$EXISTING_HOST" | $NEWLINECLEANER)`
+	EXISTING_HOST=`echo "$EXISTING_HOST" | $NEWLINECLEANER`
         case "$EXISTING_HOST" in
 			$HOSTNAME_F|$HOSTNAME_A|$HOSTNAME_S|$HOSTNAME)
                 IS_SLAVE=false
@@ -852,6 +871,7 @@ fix_postinstall_filepermissions()
     chmod 755 $BASEINSTALLDIR_ETC
     chmod 755 $BASEINSTALLDIR_OPT/etc
     chmod 644 $SYSTEMRC
+    chmod 755 "$BININSTALLROOTDIR/gevars.sh"
 
     # Other folders
     chmod 755 $BASEINSTALLDIR_OPT

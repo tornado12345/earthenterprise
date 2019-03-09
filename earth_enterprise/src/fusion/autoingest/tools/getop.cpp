@@ -26,6 +26,8 @@
 // global for convenience
 int numcols = 80;
 
+static const std::string SYS_MGR_BUSY_MSG = "GetCurrTasks: " + sysManBusyMsg;
+
 void
 outline(const char *format, ...)
 {
@@ -65,7 +67,8 @@ usage(const std::string &progn, const char *msg = 0, ...)
           "\nusage: %s [options]\n"
           "   Supported options are:\n"
           "      --help | -?:       Display this usage message\n"
-          "      --delay <seconds>: Seconds to wait between refreshes\n",
+          "      --delay <seconds>: Seconds to wait between refreshes\n"
+          "      --timeout <seconds>: Seconds to set as timeout for gesystemmanager repsonses.\n",
           progn.c_str());
   exit(1);
 }
@@ -78,29 +81,38 @@ main(int argc, char *argv[])
     int argn;
     bool help  = false;
     int delay = 5;
+    int timeout = 60;
     khGetopt options;
     options.flagOpt("help", help);
     options.flagOpt("?", help);
     options.opt("delay", delay);
+    options.opt("timeout", timeout);
     if (!options.processAll(argc, argv, argn))
       usage(progname);
     if (help)
       usage(progname);
     if (delay <= 0)
       usage(progname, "--delay must be positive");
-
+    if (timeout < 0)
+      usage(progname, "--timeout must not be less than zero");
 
     std::string master    = AssetDefs::MasterHostName();
     std::string assetroot = AssetDefs::AssetRoot();
     CmdLine clearscreen;
     clearscreen << "clear";
+    outline("Connecting to gesystemmanager to retrieve status...");
 
     while (1) {
       QString error;
       TaskLists taskLists;
       if (!khAssetManagerProxy::GetCurrTasks("dummy", taskLists,
-                                             error)) {
-        notify(NFY_FATAL, "%s", error.latin1());
+                                             error, timeout)) {
+      	if (error.compare("GetCurrTasks: socket recvall: Resource temporarily unavailable") == 0)
+          outline("No data received from gesystemmanager\nStarting new request");
+        else if (error.compare(SYS_MGR_BUSY_MSG) == 0)
+          outline("System Manager is busy.  Retrying in %d seconds", delay);
+        else
+          notify(NFY_FATAL, "%s", error.latin1());
       } else {
         // get the list of active keyhole processes
         std::vector<std::string> pslist;

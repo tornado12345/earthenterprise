@@ -23,8 +23,14 @@ import commands
 
 sys.path = sys.path + ['src/scons']
 from khEnvironment import khEnvironment
+import getversion
 
 EnsureSConsVersion(0, 96, 92)
+
+# Check version of git -- may not be able to reliably generate correct opengee version string.
+gee_version_number = getversion.open_gee_version.get_short()
+if getversion.open_gee_version.get_warning_message():
+    print getversion.open_gee_version.get_warning_message()
 
 # Set 'package_command_arguments' based on a parameter
 # that is to be passed on to Gradle
@@ -44,7 +50,7 @@ with open('rpms/build.properties', 'w') as f:
     print >> f, "## Manual changes will be overwritten."
     print >> f, str('staged=') + installdir.strip()
 
-installdir = Dir(installdir)
+installdir = Dir(installdir).abspath
 def dir_cat(installdir, subdir1, subdir2):
    if (len(subdir2) > 0):
       return Dir(subdir1 + subdir2, installdir)
@@ -177,9 +183,24 @@ package_staged_cmds = {'package_install': [
 package_install = env.PhonyTargets(**package_staged_cmds)
 env.Depends(package_install, stage_data)
 
+package_lint_cmds = {'package_lint': [
+    "rpmlint -f ./rpmlintrc rpms/build/distributions/*.rpm"
+]}
+
+package_clean_cmds = {'package_clean': [
+    "rm -f rpms/build/distributions/*.rpm"
+]}
+
+package_clean = env.PhonyTargets(**package_clean_cmds)
+
+package_lint = env.PhonyTargets(**package_lint_cmds)
+env.Depends(package_lint, package_clean)
+env.Depends(package_lint, package_install)
+
 env.Alias('stage_install', 'stage_tutorial')
 env.Alias('install', 'stage_install')
 env.Alias('package', 'package_install')
+env.Alias('lint', 'package_lint')
 Export('env')
 Export('installdir')
 
@@ -199,7 +220,7 @@ env.PhonyTargets(**this_dict)
 
 if 'cleanall' in COMMAND_LINE_TARGETS:
     #clean the search and getomcat install folders.
-    file = installdir.get_path()
+    file = installdir
     commands.getstatusoutput("rm -rf " + file)
 
     #clean /tmp/fusion_os_install

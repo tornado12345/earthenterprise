@@ -30,6 +30,7 @@
 #include "fusion/autoingest/geAssetRoot.h"
 #include "common/khFileUtils.h"
 #include "common/performancelogger.h"
+#include "fusion/config/gefConfigUtil.h"
 
 // ****************************************************************************
 // ***  global instances
@@ -89,6 +90,15 @@ khResourceManager::Init(void)
     geAssetRoot::Dirname(AssetDefs::AssetRoot(), geAssetRoot::StateDir);
 
   khLockGuard lock(mutex);
+  if(getenv("KH_NFY_LEVEL") == NULL)
+  {
+      Systemrc systemrc;
+      LoadSystemrc(systemrc);
+      uint32 logLevel = systemrc.logLevel;
+      notify(NFY_WARN, "system log level changed to: %s",
+             khNotifyLevelToString(static_cast<khNotifyLevel>(logLevel)).c_str());
+      setNotifyLevel(static_cast<khNotifyLevel>(logLevel));
+  }
 
   // Find all the old task symlinks and tell the asset manager to resubmit
   // them. The symlinks have the form (taskid.task -> verref)
@@ -233,9 +243,14 @@ khResourceManager::InsertProvider(khResourceProviderProxy *proxy)
   // instantiate the Volumes that this provider will manage
   std::vector<std::string> volnames;
   GetHostVolumes(host, volnames);
-  for (std::vector<std::string>::const_iterator vn = volnames.begin();
-       vn != volnames.end(); ++vn) {
-    volumes[*vn] = new Volume(*vn, proxy);
+  for (const auto& vn : volnames) {
+    if (volumes.find(vn) != volumes.end())
+    {
+      notify(NFY_WARN,"Volume %s already present in list of names", vn.c_str());
+      delete volumes[vn];
+      volumes.erase(vn);
+     }
+     volumes[vn] = new Volume(vn, proxy);
   }
 
   // wake up the activate thread
@@ -252,10 +267,13 @@ khResourceManager::EraseProvider(khResourceProviderProxy *proxy)
   // remove the Volumes that this provider used to manage
   std::vector<std::string> volnames;
   GetHostVolumes(host, volnames);
-  for (std::vector<std::string>::const_iterator vn = volnames.begin();
-       vn != volnames.end(); ++vn) {
-    delete volumes[*vn];
-    volumes.erase(*vn);
+  for (const auto& vn : volnames) {
+    delete volumes[vn];
+    volumes.erase(vn);
+  }
+  if (volumes.empty())
+  {
+      volumes.clear();
   }
 }
 
@@ -399,13 +417,13 @@ khResourceManager::TryActivate(void) throw()
       providers.size()) {
     // figure out which providers have CPU resources to spare
     Providers availProviders;
-    for (Providers::iterator p = providers.begin();
-         p != providers.end(); ++p) {
-      if (p->second->usedCPUs < p->second->numCPUs) {
-        availProviders.insert(*p);
-      }
+    for (const auto& p : providers)
+    {
+        if (p.second->usedCPUs < p.second->numCPUs)
+        {
+            availProviders.insert(p);
+        }
     }
-
     notify(NFY_DEBUG, "     avail providers = %lu",
            static_cast<long unsigned>(availProviders.size()));
     if (availProviders.size() != 0) {
