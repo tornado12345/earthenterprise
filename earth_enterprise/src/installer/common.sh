@@ -75,9 +75,7 @@ xml_file_get_xpath()
 
     # Warning: `xmllint --noent` doesn't recognize named entities like
     # "&lt;" and "&gt;":
-    echo "cat $XPATH" | xmllint --noent --nocdata --shell "$FILE" |
-    # Skip the first and the last line:
-        tail -n +2 | head -n -1
+    echo "cat $XPATH" | xmllint --noent --nonet --shell "$FILE" | tail -2 | head -1
 }
 
 is_package_installed()
@@ -190,7 +188,7 @@ show_no_tmp_dir_message()
 {
     echo -e "\nThe temp install directory specified [$1] does not exist."
     echo -e "Please specify the path of the extracted install files or first run"
-    echo -e "scons [-j8] release=1 [installdir=$1] stage_install\n"
+    echo -e "python2.7 /usr/bin/scons [-j8] release=1 [installdir=$1] stage_install\n"
 }
 
 show_corrupt_tmp_dir_message()
@@ -198,7 +196,7 @@ show_corrupt_tmp_dir_message()
     echo -e "\nThe temp install directory specified [$1] is corrupt (failed on copy)."
     echo -e "Please see $2 for details"
     echo -e "Please specify the path of the extracted install files or first run"
-    echo -e "scons [-j8] release=1 [installdir=$1] stage_install\n"
+    echo -e "python2.7 /usr/bin/scons [-j8] release=1 [installdir=$1] stage_install\n"
 }
 
 check_bad_hostname() {
